@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2017 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2019 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -23,8 +23,8 @@
 #if SDL_VIDEO_DRIVER_WINDOWS
 
 #include "SDL_windowsvideo.h"
-#include "SDL/SDL_assert.h"
-#include "SDL/SDL_log.h"
+#include "../../../include/SDL_assert.h"
+#include "../../../include/SDL_log.h"
 
 /* Windows CE compatibility */
 #ifndef CDS_FULLSCREEN

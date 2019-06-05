@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2017 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2019 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -43,6 +43,7 @@
 #include "SDL_cocoamouse.h"
 #include "SDL_cocoamousetap.h"
 #include "SDL_cocoaopengl.h"
+#include "SDL_cocoaopengles.h"
 #include "SDL_assert.h"
 
 /* #define DEBUG_COCOAWINDOW */
@@ -226,6 +227,10 @@ static void ConvertNSRect(NSScreen *screen, BOOL fullscreen, NSRect *r)
 static void
 ScheduleContextUpdates(SDL_WindowData *data)
 {
+    if (!data || !data->nscontexts) {
+        return;
+    }
+
     NSOpenGLContext *currentContext = [NSOpenGLContext currentContext];
     NSMutableArray *contexts = data->nscontexts;
     @synchronized (contexts) {
@@ -243,7 +248,7 @@ ScheduleContextUpdates(SDL_WindowData *data)
 static int
 GetHintCtrlClickEmulateRightClick()
 {
-	return SDL_GetHintBoolean(SDL_HINT_MAC_CTRL_CLICK_EMULATE_RIGHT_CLICK, SDL_FALSE);
+    return SDL_GetHintBoolean(SDL_HINT_MAC_CTRL_CLICK_EMULATE_RIGHT_CLICK, SDL_FALSE);
 }
 
 static NSUInteger
@@ -910,7 +915,7 @@ SetWindowStyle(SDL_Window * window, NSUInteger style)
     switch ([theEvent buttonNumber]) {
     case 0:
         if (([theEvent modifierFlags] & NSEventModifierFlagControl) &&
-		    GetHintCtrlClickEmulateRightClick()) {
+            GetHintCtrlClickEmulateRightClick()) {
             wasCtrlLeft = YES;
             button = SDL_BUTTON_RIGHT;
         } else {
@@ -1105,7 +1110,17 @@ SetWindowStyle(SDL_Window * window, NSUInteger style)
 
     for (NSTouch *touch in touches) {
         const SDL_TouchID touchId = (SDL_TouchID)(intptr_t)[touch device];
-        if (SDL_AddTouch(touchId, "") < 0) {
+        SDL_TouchDeviceType devtype = SDL_TOUCH_DEVICE_INDIRECT_ABSOLUTE;
+
+#if MAC_OS_X_VERSION_MAX_ALLOWED >= 101202 /* Added in the 10.12.2 SDK. */
+        if ([touch respondsToSelector:@selector(type)]) {
+            if ([touch type] == NSTouchTypeDirect) {
+                devtype = SDL_TOUCH_DEVICE_DIRECT;
+            }
+        }
+#endif
+
+        if (SDL_AddTouch(touchId, devtype, "") < 0) {
             return;
         }
 
@@ -1147,16 +1162,40 @@ SetWindowStyle(SDL_Window * window, NSUInteger style)
 - (BOOL)mouseDownCanMoveWindow;
 - (void)drawRect:(NSRect)dirtyRect;
 - (BOOL)acceptsFirstMouse:(NSEvent *)theEvent;
+- (BOOL)wantsUpdateLayer;
+- (void)updateLayer;
 @end
 
 @implementation SDLView
+
 - (void)setSDLWindow:(SDL_Window*)window
 {
     _sdlWindow = window;
 }
 
+/* this is used on older macOS revisions. 10.8 and later use updateLayer. */
 - (void)drawRect:(NSRect)dirtyRect
 {
+    /* Force the graphics context to clear to black so we don't get a flash of
+       white until the app is ready to draw. In practice on modern macOS, this
+       only gets called for window creation and other extraordinary events. */
+    [[NSColor blackColor] setFill];
+    NSRectFill(dirtyRect);
+    SDL_SendWindowEvent(_sdlWindow, SDL_WINDOWEVENT_EXPOSED, 0, 0);
+}
+
+-(BOOL) wantsUpdateLayer
+{
+    return YES;
+}
+
+-(void) updateLayer
+{
+    /* Force the graphics context to clear to black so we don't get a flash of
+       white until the app is ready to draw. In practice on modern macOS, this
+       only gets called for window creation and other extraordinary events. */
+    self.layer.backgroundColor = CGColorGetConstantColor(kCGColorBlack);
+    ScheduleContextUpdates((SDL_WindowData *) _sdlWindow->driverdata);
     SDL_SendWindowEvent(_sdlWindow, SDL_WINDOWEVENT_EXPOSED, 0, 0);
 }
 
@@ -1321,7 +1360,13 @@ Cocoa_CreateWindow(_THIS, SDL_Window * window)
     @catch (NSException *e) {
         return SDL_SetError("%s", [[e reason] UTF8String]);
     }
-    [nswindow setBackgroundColor:[NSColor blackColor]];
+
+#if MAC_OS_X_VERSION_MAX_ALLOWED >= 101200 /* Added in the 10.12.0 SDK. */
+    /* By default, don't allow users to make our window tabbed in 10.12 or later */
+    if ([nswindow respondsToSelector:@selector(setTabbingMode:)]) {
+        [nswindow setTabbingMode:NSWindowTabbingModeDisallowed];
+    }
+#endif
 
     if (videodata->allow_spaces) {
         SDL_assert(floor(NSAppKitVersionNumber) > NSAppKitVersionNumber10_6);
@@ -1344,16 +1389,40 @@ Cocoa_CreateWindow(_THIS, SDL_Window * window)
         }
     }
 
+#if SDL_VIDEO_OPENGL_ES2
+#if SDL_VIDEO_OPENGL_EGL
+    if ((window->flags & SDL_WINDOW_OPENGL) &&
+        _this->gl_config.profile_mask == SDL_GL_CONTEXT_PROFILE_ES) {
+        [contentView setWantsLayer:TRUE];
+    }
+#endif /* SDL_VIDEO_OPENGL_EGL */
+#endif /* SDL_VIDEO_OPENGL_ES2 */
     [nswindow setContentView:contentView];
     [contentView release];
-
-    /* Allow files and folders to be dragged onto the window by users */
-    [nswindow registerForDraggedTypes:[NSArray arrayWithObject:(NSString *)kUTTypeFileURL]];
 
     if (SetupWindowData(_this, window, nswindow, SDL_TRUE) < 0) {
         [nswindow release];
         return -1;
     }
+
+    if (!(window->flags & SDL_WINDOW_OPENGL)) {
+        return 0;
+    }
+    
+    /* The rest of this macro mess is for OpenGL or OpenGL ES windows */
+#if SDL_VIDEO_OPENGL_ES2
+    if (_this->gl_config.profile_mask == SDL_GL_CONTEXT_PROFILE_ES) {
+#if SDL_VIDEO_OPENGL_EGL
+        if (Cocoa_GLES_SetupWindow(_this, window) < 0) {
+            Cocoa_DestroyWindow(_this, window);
+            return -1;
+        }
+        return 0;
+#else
+        return SDL_SetError("Could not create GLES window surface (EGL support not configured)");
+#endif /* SDL_VIDEO_OPENGL_EGL */
+    }
+#endif /* SDL_VIDEO_OPENGL_ES2 */
     return 0;
 }}
 
@@ -1836,6 +1905,17 @@ int
 Cocoa_SetWindowHitTest(SDL_Window * window, SDL_bool enabled)
 {
     return 0;  /* just succeed, the real work is done elsewhere. */
+}
+
+void
+Cocoa_AcceptDragAndDrop(SDL_Window * window, SDL_bool accept)
+{
+    SDL_WindowData *data = (SDL_WindowData *) window->driverdata;
+    if (accept) {
+        [data->nswindow registerForDraggedTypes:[NSArray arrayWithObject:(NSString *)kUTTypeFileURL]];
+    } else {
+        [data->nswindow unregisterDraggedTypes];
+    }
 }
 
 int

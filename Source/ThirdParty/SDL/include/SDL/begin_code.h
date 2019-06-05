@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2017 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2019 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -53,7 +53,7 @@
 
 /* Some compilers use a special export keyword */
 // Urho3D: Only export when it is being requested
-#if defined(SDL_EXPORTS) || defined(Urho3D_EXPORTS)
+#ifdef SDL_EXPORTS
 #ifndef DECLSPEC
 # if defined(__WIN32__) || defined(__WINRT__)
 #  ifdef __BORLANDC__

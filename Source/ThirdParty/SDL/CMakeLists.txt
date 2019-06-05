@@ -19,7 +19,8 @@
 # 3. This notice may not be removed or altered from any source distribution.
 #
 
-# Modified by Yao Wei Tjong for Urho3D, the modified portion is licensed under below license
+# Modified by Yao Wei Tjong, Bantukul Olarn for Urho3D.
+# the modified portion is licensed under below license
 
 #
 # Copyright (c) 2008-2019 the Urho3D project.
@@ -75,10 +76,13 @@ include(${SDL2_SOURCE_DIR}/cmake/sdlchecks.cmake)
 # set SDL_BINARY_AGE and SDL_INTERFACE_AGE to 0.
 set(SDL_MAJOR_VERSION 2)
 set(SDL_MINOR_VERSION 0)
-set(SDL_MICRO_VERSION 7)
+set(SDL_MICRO_VERSION 9)
 set(SDL_INTERFACE_AGE 0)
-set(SDL_BINARY_AGE 7)
+set(SDL_BINARY_AGE 9)
 set(SDL_VERSION "${SDL_MAJOR_VERSION}.${SDL_MINOR_VERSION}.${SDL_MICRO_VERSION}")
+# the following should match the versions in Xcode project file:
+set(DYLIB_CURRENT_VERSION 10.0.0)
+set(DYLIB_COMPATIBILITY_VERSION 1.0.0)
 
 # Urho3D - commented out CMAKE_DEBUG_POSTFIX configuration as our build system deos not not expose SDL as a library
 
@@ -176,6 +180,37 @@ endif()
 set (SDL_LIBS)
 set (SDL_CFLAGS)
 
+if(MSVC)
+  option(FORCE_STATIC_VCRT "Force /MT for static VC runtimes" OFF)
+  if(FORCE_STATIC_VCRT)
+    foreach(flag_var
+        CMAKE_C_FLAGS CMAKE_C_FLAGS_DEBUG CMAKE_C_FLAGS_RELEASE
+        CMAKE_C_FLAGS_MINSIZEREL CMAKE_C_FLAGS_RELWITHDEBINFO)
+      if(${flag_var} MATCHES "/MD")
+        string(REGEX REPLACE "/MD" "/MT" ${flag_var} "${${flag_var}}")
+      endif()
+    endforeach()
+  endif()
+
+  # Make sure /RTC1 is disabled, otherwise it will use functions from the CRT
+  foreach(flag_var
+      CMAKE_C_FLAGS CMAKE_C_FLAGS_DEBUG CMAKE_C_FLAGS_RELEASE
+      CMAKE_C_FLAGS_MINSIZEREL CMAKE_C_FLAGS_RELWITHDEBINFO)
+    string(REGEX REPLACE "/RTC(su|[1su])" "" ${flag_var} "${${flag_var}}")
+  endforeach(flag_var)
+endif()
+
+# Those are used for pkg-config and friends, so that the SDL2.pc, sdl2-config,
+# etc. are created correctly.
+set(SDL_LIBS "-lSDL2")
+set(SDL_CFLAGS "")
+
+# When building shared lib for Windows with MinGW,
+# avoid the DLL having a "lib" prefix
+if(WINDOWS)
+  set(CMAKE_SHARED_LIBRARY_PREFIX "")
+endif()
+
 # Emscripten toolchain has a nonempty default value for this, and the checks
 # in this file need to change that, so remember the original value, and
 # restore back to that afterwards. For check_function_exists() to work in
@@ -208,6 +243,9 @@ if(CYGWIN)
 endif()
 
 add_definitions(-DUSING_GENERATED_CONFIG_H)
+# General includes
+# Urho3D - use 'generated' path suffix for generated config header file, the suffic prevents overwriting the header file with the same name in the source tree in case of non out-of-source build tree is being used
+set (INCLUDE_DIRS ${SDL2_BINARY_DIR}/include/generated ${SDL2_SOURCE_DIR}/include)
 
 # All these ENABLED_BY_DEFAULT vars will default to ON if not specified, so
 #  you only need to have a platform override them if they are disabling.
@@ -232,7 +270,7 @@ endif ()
 
 set(SDL_SUBSYSTEMS
     Atomic Audio Video Render Events Joystick Haptic Power Threads Timers
-    File Loadso CPUinfo Filesystem Dlopen)
+    File Loadso CPUinfo Filesystem Dlopen Sensor)
 foreach(_SUB ${SDL_SUBSYSTEMS})
   string(TOUPPER ${_SUB} _OPT)
   if (NOT DEFINED SDL_${_OPT}_ENABLED_BY_DEFAULT)
@@ -292,19 +330,17 @@ set (RPATH TRUE)
 # Urho3D - prefer clock_gettime() when it is available
 dep_option(CLOCK_GETTIME       "Use clock_gettime() instead of gettimeofday()" ON "NOT WINDOWS" OFF)
 set_option(INPUT_TSLIB         "Use the Touchscreen library for input" ${UNIX_SYS})
-dep_option(VIDEO_WAYLAND       "Use Wayland video driver" ON UNIX_SYS OFF)
-dep_option(WAYLAND_SHARED      "Dynamically load Wayland support" ON VIDEO_WAYLAND OFF)
+set_option(VIDEO_WAYLAND       "Use Wayland video driver" ${UNIX_SYS})
+dep_option(WAYLAND_SHARED      "Dynamically load Wayland support" ON "VIDEO_WAYLAND" OFF)
 # Urho3D - change the VIDEO_WAYLAND_QT_TOUCH default value to FALSE (this is only needed by Sailfish[?] but we don't know way to auto-detect that yet)
 dep_option(VIDEO_WAYLAND_QT_TOUCH  "QtWayland server support for Wayland video driver" OFF VIDEO_WAYLAND OFF)
-# Urho3D - change the VIDEO_MIR default value to FALSE (SDL requires the bleeding edge of MIR version which normal Linux distros do not provide)
-dep_option(VIDEO_MIR           "Use Mir video driver" OFF UNIX_SYS OFF)
-dep_option(MIR_SHARED          "Dynamically load Mir support" ON VIDEO_MIR OFF)
 # Urho3D - only make VIDEO_RPI option available on Raspberry-Pi platform
 dep_option(VIDEO_RPI           "Use Raspberry Pi video driver" ON RPI OFF)
 # Urho3D - bug fix - make VIDEO_X11 build option available for desktop UNIX (including OSX) only
 dep_option(VIDEO_X11           "Use X11 video driver" ON "UNIX_SYS OR APPLE\;NOT RPI AND NOT IOS AND NOT TVOS" OFF)
-dep_option(X11_SHARED          "Dynamically load X11 support" ON VIDEO_X11 OFF)
-foreach(_SUB Xcursor Xinerama XInput Xrandr Xscrnsaver XShape Xvm)
+dep_option(X11_SHARED          "Dynamically load X11 support" ON "VIDEO_X11" OFF)
+set(SDL_X11_OPTIONS Xcursor Xinerama XInput Xrandr Xscrnsaver XShape Xvm)
+foreach(_SUB ${SDL_X11_OPTIONS})
   string(TOUPPER "VIDEO_X11_${_SUB}" _OPT)
   dep_option(${_OPT}           "Enable ${_SUB} support" ON VIDEO_X11 OFF)
 endforeach()
@@ -326,10 +362,13 @@ if (WINDOWS)
     set (RENDER_D3D TRUE)
   endif ()
 endif ()
-dep_option(VIDEO_VIVANTE       "Use Vivante EGL video driver" ON UNIX_SYS OFF)
+set_option(WASAPI              "Use the Windows WASAPI audio driver" ${WINDOWS})
+set_option(VIDEO_VIVANTE       "Use Vivante EGL video driver" ${UNIX_SYS})
 dep_option(VIDEO_VULKAN        "Enable Vulkan support" ON "ANDROID OR APPLE OR LINUX OR WINDOWS" OFF)
-dep_option(VIDEO_KMSDRM        "Use KMS DRM video driver" ON UNIX_SYS OFF)
-dep_option(KMSDRM_SHARED       "Dynamically load KMS DRM support" ON VIDEO_KMSDRM OFF)
+set_option(VIDEO_KMSDRM        "Use KMS DRM video driver" ${UNIX_SYS})
+dep_option(KMSDRM_SHARED       "Dynamically load KMS DRM support" ON "VIDEO_KMSDRM" OFF)
+option_string(BACKGROUNDING_SIGNAL "number to use for magic backgrounding signal or 'OFF'" "OFF")
+option_string(FOREGROUNDING_SIGNAL "number to use for magic foregrounding signal or 'OFF'" "OFF")
 
 # TODO: We should (should we?) respect cmake's ${BUILD_SHARED_LIBS} flag here
 # The options below are for compatibility to configure's default behaviour.
@@ -337,6 +376,7 @@ set(SDL_SHARED ${SDL_SHARED_ENABLED_BY_DEFAULT} CACHE BOOL "Build a shared versi
 set(SDL_STATIC ON CACHE BOOL "Build a static version of the library")
 
 dep_option(SDL_STATIC_PIC      "Static version of the library should be built with Position Independent Code" OFF "SDL_STATIC" OFF)
+set_option(SDL_TEST            "Build the test directory" OFF)
 
 # General source files
 set (SOURCE_FILE_PATTERNS
@@ -348,7 +388,7 @@ set (SOURCE_FILE_PATTERNS
   ${SDL2_SOURCE_DIR}/src/thread/*.c
   ${SDL2_SOURCE_DIR}/src/timer/*.c)
 # Urho3D - exclude source files from disabled subsystems, except SDL_ATOMIC, SDL_THREADS and SDL_TIMERS as SDL always needs them even when they may be just generic or dummy implementations
-foreach (_SUB AUDIO CPUINFO EVENTS FILE HAPTIC JOYSTICK POWER RENDER VIDEO)
+foreach (_SUB AUDIO CPUINFO EVENTS FILE HAPTIC JOYSTICK POWER RENDER SENSOR VIDEO)
   string (TOLOWER ${_SUB} _DIR)
   if (${SDL_${_SUB}})
     list (APPEND SOURCE_FILE_PATTERNS ${SDL2_SOURCE_DIR}/src/${_DIR}/*.c)
@@ -356,6 +396,9 @@ foreach (_SUB AUDIO CPUINFO EVENTS FILE HAPTIC JOYSTICK POWER RENDER VIDEO)
 endforeach ()
 if (SDL_RENDER)
   list (APPEND SOURCE_FILE_PATTERNS ${SDL2_SOURCE_DIR}/src/render/*/*.c)   # Recurse one more level
+endif ()
+if (SDL_VIDEO) # Urho3D: Added video/yuv2rgb sources
+  list (APPEND SOURCE_FILE_PATTERNS ${SDL2_SOURCE_DIR}/src/video/yuv2rgb/*.c)
 endif ()
 file(GLOB SOURCE_FILES ${SOURCE_FILE_PATTERNS})
 
@@ -373,6 +416,14 @@ else()
   message_error("unknown assertion level")
 endif()
 set(HAVE_ASSERTIONS ${ASSERTIONS})
+
+if(NOT BACKGROUNDING_SIGNAL STREQUAL "OFF")
+  add_definitions("-DSDL_BACKGROUNDING_SIGNAL=${BACKGROUNDING_SIGNAL}")
+endif()
+
+if(NOT FOREGROUNDING_SIGNAL STREQUAL "OFF")
+  add_definitions("-DSDL_FOREGROUNDING_SIGNAL=${FOREGROUNDING_SIGNAL}")
+endif()
 
 # Compiler option evaluation
 if(USE_GCC OR USE_CLANG)
@@ -497,8 +548,10 @@ if(LIBC)
             wcslen wcscmp
             strlen _strrev _strupr _strlwr strchr strrchr strstr itoa _ltoa
             _ultoa strtol strtoul strtoll strtod atoi atof strcmp strncmp
-            _stricmp _strnicmp sscanf atan atan2 acos asin ceil copysign cos
-            cosf fabs floor log pow scalbn sin sinf sqrt sqrtf tan tanf)
+            _stricmp _strnicmp sscanf
+            acos acosf asin asinf atan atanf atan2 atan2f ceil ceilf
+            copysign copysignf cos cosf exp expf fabs fabsf floor floorf fmod fmodf
+            log logf log10 log10f pow powf scalbn scalbnf sin sinf sqrt sqrtf tan tanf)
       string(TOUPPER ${_FN} _UPPER)
       set(HAVE_${_UPPER} 1)
     endforeach()
@@ -548,7 +601,7 @@ if(LIBC)
             _uitoa _ultoa strtol strtoul _i64toa _ui64toa strtoll strtoull
             atoi atof strcmp strncmp _stricmp strcasecmp _strnicmp strncasecmp
             vsscanf vsnprintf fopen64 fseeko fseeko64 sigaction setjmp
-            nanosleep sysconf sysctlbyname getauxval poll
+            nanosleep sysconf sysctlbyname getauxval poll _Exit
             )
       string(TOUPPER ${_FN} _UPPER)
       set(_HAVEVAR "HAVE_${_UPPER}")
@@ -686,6 +739,12 @@ if(ANDROID)
     file(GLOB ANDROID_POWER_SOURCES ${SDL2_SOURCE_DIR}/src/power/android/*.c)
     set(SOURCE_FILES ${SOURCE_FILES} ${ANDROID_POWER_SOURCES})
     set(HAVE_SDL_POWER TRUE)
+  endif()
+  if(SDL_SENSOR)
+    set(SDL_SENSOR_ANDROID 1)
+    set(HAVE_SDL_SENSORS TRUE)
+    file(GLOB ANDROID_SENSOR_SOURCES ${SDL2_SOURCE_DIR}/src/sensor/android/*.c)
+    set(SOURCE_FILES ${SOURCE_FILES} ${ANDROID_SENSOR_SOURCES})
   endif()
   if(SDL_VIDEO)
     set(SDL_VIDEO_DRIVER_ANDROID 1)
@@ -886,7 +945,6 @@ elseif(APPLE)
     if (VIDEO_COCOA)
       # Urho3D - these are moved from commented CheckCOCOA macro
       set(SDL_VIDEO_DRIVER_COCOA 1)
-      set(VIDEO_VULKAN OFF)
       file(GLOB COCOA_SOURCES ${SDL2_SOURCE_DIR}/src/video/cocoa/*.m)
       set(SOURCE_FILES ${SOURCE_FILES} ${COCOA_SOURCES})
       set(HAVE_SDL_VIDEO TRUE)
@@ -978,7 +1036,6 @@ elseif(UNIX)    # Urho3D - at this point both UNIX and UNIX_SYS should be equiva
     # Need to check for Raspberry PI first and add platform specific compiler flags, otherwise the test for GLES fails!
     CheckRPI()
     CheckX11()
-    CheckMir()
     CheckDirectFB()
     # Urho3D - raname macros
     CheckOpenGL()
@@ -1168,6 +1225,11 @@ elseif(WINDOWS)
     # Urho3D - TODO - move the find_package(DirectX) call from Urho3D common module to here later after we have refactored the library dependency handling
   endif()
 
+  # headers needed elsewhere ...
+  check_include_file(mmdeviceapi.h HAVE_MMDEVICEAPI_H)
+  check_include_file(audioclient.h HAVE_AUDIOCLIENT_H)
+  check_include_file(endpointvolume.h HAVE_ENDPOINTVOLUME_H)
+
   if(SDL_AUDIO)
     set(SDL_AUDIO_DRIVER_WINMM 1)
     file(GLOB WINMM_AUDIO_SOURCES ${SDL2_SOURCE_DIR}/src/audio/winmm/*.c)
@@ -1180,13 +1242,7 @@ elseif(WINDOWS)
       set(SOURCE_FILES ${SOURCE_FILES} ${DSOUND_AUDIO_SOURCES})
     endif()
 
-    if(HAVE_XAUDIO2_H)
-      set(SDL_AUDIO_DRIVER_XAUDIO2 1)
-      file(GLOB XAUDIO2_AUDIO_SOURCES ${SDL2_SOURCE_DIR}/src/audio/xaudio2/*.c)
-      set(SOURCE_FILES ${SOURCE_FILES} ${XAUDIO2_AUDIO_SOURCES})
-    endif()
-
-    if(HAVE_AUDIOCLIENT_H AND HAVE_MMDEVICEAPI_H)
+    if(WASAPI AND HAVE_AUDIOCLIENT_H AND HAVE_MMDEVICEAPI_H)
       set(SDL_AUDIO_DRIVER_WASAPI 1)
       file(GLOB WASAPI_AUDIO_SOURCES ${SDL2_SOURCE_DIR}/src/audio/wasapi/*.c)
       set(SOURCE_FILES ${SOURCE_FILES} ${WASAPI_AUDIO_SOURCES})
@@ -1239,7 +1295,10 @@ elseif(WINDOWS)
     set(HAVE_SDL_FILESYSTEM TRUE)
   endif()
 
-  # TODO: in configure.in the check for timers is set on
+  # Libraries for Win32 native and MinGW
+  list(APPEND EXTRA_LIBS user32 gdi32 winmm imm32 ole32 oleaut32 version uuid advapi32 shell32)
+
+  # TODO: in configure.ac the check for timers is set on
   # cygwin | mingw32* - does this include mingw32CE?
   if(SDL_TIMERS)
     set(SDL_TIMER_WINDOWS 1)
@@ -1318,10 +1377,11 @@ endif()
 
 if(VIDEO_VULKAN)
   set(SDL_VIDEO_VULKAN 1)
+  set(HAVE_VIDEO_VULKAN TRUE)
 endif()
 
 # Dummies
-# configure.in does it differently:
+# configure.ac does it differently:
 # if not have X
 #   if enable_X {  SDL_X_DISABLED = 1 }
 #   [add dummy sources]
@@ -1329,16 +1389,21 @@ endif()
 # This leads to missing internal references on building, since the
 # src/X/*.c does not get included.
 if(NOT HAVE_SDL_JOYSTICK)
-  set(SDL_JOYSTICK_DISABLED 1)
+  set(SDL_JOYSTICK_DUMMY 1)
   if(SDL_JOYSTICK AND NOT APPLE) # results in unresolved symbols on OSX
     file(GLOB JOYSTICK_SOURCES ${SDL2_SOURCE_DIR}/src/joystick/dummy/*.c)
     set(SOURCE_FILES ${SOURCE_FILES} ${JOYSTICK_SOURCES})
   endif()
 endif()
 if(NOT HAVE_SDL_HAPTIC)
-  set(SDL_HAPTIC_DISABLED 1)
+  set(SDL_HAPTIC_DUMMY 1)
   file(GLOB HAPTIC_SOURCES ${SDL2_SOURCE_DIR}/src/haptic/dummy/*.c)
   set(SOURCE_FILES ${SOURCE_FILES} ${HAPTIC_SOURCES})
+endif()
+if(NOT HAVE_SDL_SENSORS)
+  set(SDL_SENSOR_DUMMY 1)
+  file(GLOB SENSORS_SOURCES ${SDL2_SOURCE_DIR}/src/sensor/dummy/*.c)
+  set(SOURCE_FILES ${SOURCE_FILES} ${SENSORS_SOURCES})
 endif()
 if(NOT HAVE_SDL_LOADSO)
   set(SDL_LOADSO_DISABLED 1)
@@ -1478,8 +1543,11 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${EXTRA_CFLAGS}")
 
 # Urho3D - anything below this line is Urho3D specific
 
+# Define target name
+set (TARGET_NAME SDL)
+
 # Define source files
-file (GLOB_RECURSE H_FILES include/*.h)     # Adding the headers into source files list is just for easier file browsing in the IDE
+file (GLOB H_FILES include/*.h)     # Adding the headers into source files list is just for easier file browsing in the IDE
 list (APPEND SOURCE_FILES ${H_FILES})
 
 # Setup target as STATIC library (as the result we never use EXTRA_LDFLAGS linker flags)
