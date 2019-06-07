@@ -186,9 +186,9 @@ URHO3D_BINARY_COMPATIBLE_TYPE(Ray, pod::float6);
 // --------------------------------------- SDL ---------------------------------------
 namespace SDL
 {
-  #include "../ThirdParty/SDL/include/SDL/SDL_joystick.h"
-  #include "../ThirdParty/SDL/include/SDL/SDL_gamecontroller.h"
-  #include "../ThirdParty/SDL/include/SDL/SDL_keycode.h"
+  #include "SDL/SDL_joystick.h"
+  #include "SDL/SDL_gamecontroller.h"
+  #include "SDL/SDL_keycode.h"
 }
 // --------------------------------------- Core ---------------------------------------
 
