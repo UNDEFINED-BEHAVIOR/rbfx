@@ -29,6 +29,12 @@ project (Urho3D)
 # Set CMake modules search path
 set (CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/CMake/Modules)
 
+if (WIN32)
+# just include directx if windows,
+# sdl joystick needs this.
+include(FindDirectX)
+endif()
+
 # Include file that sets up all configurable properties
 include(UrhoOptions)
 
