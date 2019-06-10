@@ -57,19 +57,46 @@ void Editor::RenderMenuBar()
             }
 
             if (ui::MenuItem("Open/Create Project"))
+                OpenOrCreateProject();
+
+            JSONValue& recents = editorSettings_["recent-projects"];
+            // Does not show very first item, which is current project
+            if (recents.Size() == (project_.NotNull() ? 1 : 0))
             {
-                nfdchar_t* projectDir = nullptr;
-                if (NFD_PickFolder("", &projectDir) == NFD_OKAY)
+                ui::PushStyleColor(ImGuiCol_Text, ui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+                ui::MenuItem("Recent Projects");
+                ui::PopStyleColor();
+            }
+            else if (ui::BeginMenu("Recent Projects"))
+            {
+                for (int i = project_.NotNull() ? 1 : 0; i < recents.Size(); i++)
                 {
-                    OpenProject(projectDir);
-                    NFD_FreePath(projectDir);
+                    const ea::string& projectPath = recents[i].GetString();
+
+                    if (ui::MenuItem(GetFileNameAndExtension(RemoveTrailingSlash(projectPath)).c_str()))
+                        OpenProject(projectPath);
+
+                    if (ui::IsItemHovered())
+                        ui::SetTooltip("%s", projectPath.c_str());
                 }
+                ui::Separator();
+                if (ui::MenuItem("Clear All"))
+                    recents.Clear();
+                ui::EndMenu();
             }
 
             ui::Separator();
 
             if (project_)
             {
+                if (ui::MenuItem("Reset UI"))
+                {
+                    ea::string projectPath = project_->GetProjectPath();
+                    CloseProject();
+                    GetFileSystem()->Delete(projectPath + ".ui.ini");
+                    OpenProject(projectPath);
+                }
+
                 if (ui::MenuItem("Close Project"))
                 {
                     CloseProject();

@@ -141,6 +141,29 @@ SceneTab::SceneTab(Context* context)
             gizmo_.UnselectAll();
         }
     });
+    SubscribeToEvent(E_EDITORPROJECTCLOSING, [this](StringHash, VariantMap&) {
+        if (texture_.Null())
+            return;
+
+        // Also crop image to a square.
+        SharedPtr<Image> snapshot(texture_->GetImage());
+        int w = snapshot->GetWidth();
+        int h = snapshot->GetHeight();
+        int side = Min(w, h);
+        IntRect rect{0, 0, w, h};
+        if (w > h)
+        {
+            rect.left_ = ((w - side) / 2);
+            rect.right_ = rect.left_ + side;
+        }
+        else if (h > w)
+        {
+            rect.top_ = ((w - side) / 2);
+            rect.bottom_ = rect.top_ + side;
+        }
+        SharedPtr<Image> cropped = snapshot->GetSubimage(rect);
+        cropped->SavePNG(GetSubsystem<Project>()->GetProjectPath() + ".snapshot.png");
+    });
 
     undo_.Connect(&inspector_);
     undo_.Connect(&gizmo_);
@@ -156,6 +179,7 @@ SceneTab::SceneTab(Context* context)
 
 SceneTab::~SceneTab()
 {
+    Close();
     context_->RegisterSubsystem(new UI(context_));
 }
 
@@ -310,8 +334,8 @@ void SceneTab::OnAfterBegin()
 
 void SceneTab::OnBeforeEnd()
 {
-    ui::PushStyleVar(ImGuiStyleVar_WindowPadding, {0, 0});
     BaseClassName::OnBeforeEnd();
+    ui::PushStyleVar(ImGuiStyleVar_WindowPadding, {0, 0});
 }
 
 void SceneTab::OnAfterEnd()
