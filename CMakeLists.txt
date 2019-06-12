@@ -38,6 +38,13 @@ endif()
 # Include file that sets up all configurable properties
 include(UrhoOptions)
 
+# added var specifying urho root needed for macro etc, defined here
+# get_filename_component(URHO3D_ROOT_PATH ${CMAKE_CURRENT_SOURCE_DIR} ABSOLUTE)
+set(URHO3D_ROOT_PATH ${CMAKE_CURRENT_SOURCE_DIR})
+if (URHO3D_VERBOSE_SETUP)
+    message("Urho3D root path: ${URHO3D_ROOT_PATH}")
+endif()
+
 # Include common utilitles
 include(UrhoCommon)
 

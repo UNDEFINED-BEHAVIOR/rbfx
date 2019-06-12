@@ -60,6 +60,8 @@ endif ()
 
 include(CMakeDependentOption)
 
+option                (URHO3D_VERBOSE_SETUP     "Emit extra cmake setup messages"                        ${URHO3D_VERBOSE_SETUP})
+
 # Build properties
 option(BUILD_SHARED_LIBS                        "Build engine as shared library."       ON)
 option(URHO3D_ENABLE_ALL                        "Enable (almost) all engine features."  ON)
