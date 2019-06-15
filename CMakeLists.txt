@@ -172,3 +172,5 @@ if (NOT ANDROID)
         endif ()
     endforeach ()
 endif ()
+
+include("ApplicationCmakeLists.cmake")
