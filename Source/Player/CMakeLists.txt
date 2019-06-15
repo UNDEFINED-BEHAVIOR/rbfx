@@ -20,6 +20,11 @@
 # THE SOFTWARE.
 #
 
+
+if (URHO3D_NO_PLAYER)
+    return()
+endif()
+
 add_subdirectory(Common)
 
 if (URHO3D_CSHARP)
