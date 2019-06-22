@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2017 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2019 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -68,6 +68,7 @@ typedef struct SDL_AudioDriverImpl
     int (*OpenDevice) (_THIS, void *handle, const char *devname, int iscapture);
     void (*ThreadInit) (_THIS); /* Called by audio thread at start */
     void (*ThreadDeinit) (_THIS); /* Called by audio thread at end */
+    void (*BeginLoopIteration)(_THIS);  /* Called by audio thread at top of loop */
     void (*WaitDevice) (_THIS);
     void (*PlayDevice) (_THIS);
     int (*GetPendingBytes) (_THIS);
@@ -97,8 +98,10 @@ typedef struct SDL_AudioDriverImpl
 typedef struct SDL_AudioDeviceItem
 {
     void *handle;
+    char *name;
+    char *original_name;
+    int dupenum;
     struct SDL_AudioDeviceItem *next;
-    char name[SDL_VARIABLE_LENGTH_ARRAY];
 } SDL_AudioDeviceItem;
 
 
@@ -193,7 +196,6 @@ extern AudioBootStrap ESD_bootstrap;
 extern AudioBootStrap NACLAUDIO_bootstrap;
 extern AudioBootStrap NAS_bootstrap;
 extern AudioBootStrap WASAPI_bootstrap;
-extern AudioBootStrap XAUDIO2_bootstrap;
 extern AudioBootStrap DSOUND_bootstrap;
 extern AudioBootStrap WINMM_bootstrap;
 extern AudioBootStrap PAUDIO_bootstrap;
@@ -203,6 +205,7 @@ extern AudioBootStrap DISKAUDIO_bootstrap;
 extern AudioBootStrap DUMMYAUDIO_bootstrap;
 extern AudioBootStrap FUSIONSOUND_bootstrap;
 extern AudioBootStrap ANDROIDAUDIO_bootstrap;
+extern AudioBootStrap openslES_bootstrap;
 extern AudioBootStrap PSPAUDIO_bootstrap;
 extern AudioBootStrap EMSCRIPTENAUDIO_bootstrap;
 

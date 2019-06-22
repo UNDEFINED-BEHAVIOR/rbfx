@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2016 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2019 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -37,9 +37,6 @@
 #endif
 #if SDL_VIDEO_DRIVER_COCOA
 #define VK_USE_PLATFORM_MACOS_MVK
-#endif
-#if SDL_VIDEO_DRIVER_MIR
-#define VK_USE_PLATFORM_MIR_KHR
 #endif
 #if SDL_VIDEO_DRIVER_UIKIT
 #define VK_USE_PLATFORM_IOS_MVK
@@ -80,6 +77,9 @@ extern SDL_bool SDL_Vulkan_GetInstanceExtensions_Helper(unsigned *userCount,
 
 /* No SDL Vulkan support, just include the header for typedefs */
 #include "SDL_vulkan.h"
+
+typedef void (*PFN_vkGetInstanceProcAddr) (void);
+typedef int  (*PFN_vkEnumerateInstanceExtensionProperties) (void);
 
 #endif /* SDL_VIDEO_VULKAN */
 

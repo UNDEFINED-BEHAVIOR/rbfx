@@ -46,6 +46,8 @@ public:
 class IInspectorProvider
 {
 public:
+    /// Clear current selection. Usually invoked when new selection is replacing old one.
+    virtual void ClearSelection() { }
     /// Render inspector window.
     virtual void RenderInspector(const char* filter) = 0;
 };
@@ -77,7 +79,7 @@ public:
     /// Save ui settings.
     virtual void OnSaveUISettings(ImGuiTextBuffer* buf);
     /// Load ui settings.
-    virtual void OnLoadUISettings(const char* name, const char* line);
+    virtual const char* OnLoadUISettings(const char* name, const char* line);
     /// Load a file from resource path.
     virtual bool LoadResource(const ea::string& resourcePath);
     /// Save tab contents to a resource file.

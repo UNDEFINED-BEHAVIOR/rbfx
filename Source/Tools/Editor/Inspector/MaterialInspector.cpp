@@ -69,7 +69,9 @@ MaterialInspector::MaterialInspector(Context* context, Material* material)
 
 void MaterialInspector::RenderInspector(const char* filter)
 {
-    RenderAttributes(inspectable_, filter, &attributeInspector_);
+    SharedPtr<MaterialInspector> ref(this);
+    if (inspectable_.NotNull())
+        RenderAttributes(inspectable_, filter, &attributeInspector_);
 }
 
 void MaterialInspector::ToggleModel()
@@ -423,18 +425,11 @@ void Inspectable::Material::RegisterObject(Context* context)
         URHO3D_CUSTOM_ATTRIBUTE("Occlusion", getter, setter, bool, false, AM_EDIT);
     }
 
-    // Occlusion
+    // Specular
     {
-        auto getter = [](const Inspectable::Material& inspectable, Variant& value)        { value = inspectable.GetMaterial()->GetOcclusion(); };
-        auto setter = [](const Inspectable::Material& inspectable, const Variant& value)  { inspectable.GetMaterial()->SetOcclusion(value.GetBool()); };
-        URHO3D_CUSTOM_ATTRIBUTE("Occlusion", getter, setter, bool, false, AM_EDIT);
-    }
-
-    // Occlusion
-    {
-        auto getter = [](const Inspectable::Material& inspectable, Variant& value)        { value = inspectable.GetMaterial()->GetOcclusion(); };
-        auto setter = [](const Inspectable::Material& inspectable, const Variant& value)  { inspectable.GetMaterial()->SetOcclusion(value.GetBool()); };
-        URHO3D_CUSTOM_ATTRIBUTE("Occlusion", getter, setter, bool, false, AM_EDIT);
+        auto getter = [](const Inspectable::Material& inspectable, Variant& value)        { value = inspectable.GetMaterial()->GetSpecular(); };
+        auto setter = [](const Inspectable::Material& inspectable, const Variant& value)  { inspectable.GetMaterial()->SetSpecular(value.GetBool()); };
+        URHO3D_CUSTOM_ATTRIBUTE("Specular", getter, setter, bool, false, AM_EDIT);
     }
 
     // Constant Bias

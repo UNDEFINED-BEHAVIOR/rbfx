@@ -60,6 +60,8 @@ endif ()
 
 include(CMakeDependentOption)
 
+option                (URHO3D_VERBOSE_SETUP     "Emit extra cmake setup messages"                        ${URHO3D_VERBOSE_SETUP})
+
 # Build properties
 option(BUILD_SHARED_LIBS                        "Build engine as shared library."       ON)
 option(URHO3D_ENABLE_ALL                        "Enable (almost) all engine features."  ON)
@@ -77,7 +79,7 @@ option                (URHO3D_SYSTEMUI           "Build SystemUI subsystem"     
 option                (URHO3D_URHO2D             "2D subsystem enabled"                                  ${URHO3D_ENABLE_ALL})
 
 # Features
-cmake_dependent_option(URHO3D_CSHARP             "Enable C# support"                                     ${URHO3D_ENABLE_ALL} "BUILD_SHARED_LIBS"             OFF)
+cmake_dependent_option(URHO3D_CSHARP             "Enable C# support"                                     OFF                  "BUILD_SHARED_LIBS"             OFF)
 if (WIN32)
     cmake_dependent_option(URHO3D_WITH_MONO      "Use Mono runtime"                                      OFF                  "URHO3D_CSHARP"                 OFF)
 else ()

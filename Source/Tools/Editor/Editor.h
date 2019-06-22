@@ -110,6 +110,8 @@ protected:
     void SetupSystemUI();
     ///
     template<typename T> void RegisterSubcommand();
+    /// Opens a file dialog for folder selection. Project is opened or created in selected folder.
+    void OpenOrCreateProject();
 
     /// List of active scene tabs.
     ea::vector<SharedPtr<Tab>> tabs_;
@@ -133,6 +135,8 @@ protected:
     ea::string defaultProjectPath_;
     ///
     ea::vector<SharedPtr<SubCommand>> subCommands_;
+    /// Global editor settings.
+    JSONValue editorSettings_;
 };
 
 }
