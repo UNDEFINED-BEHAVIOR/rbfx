@@ -237,10 +237,6 @@ bool Engine::Initialize(const VariantMap& parameters)
         graphics->SetFlushGPU(GetParameter(parameters, EP_FLUSH_GPU, false).GetBool());
         graphics->SetOrientations(GetParameter(parameters, EP_ORIENTATIONS, "LandscapeLeft LandscapeRight").GetString());
 
-        if (HasParameter(parameters, EP_WINDOW_POSITION_X) && HasParameter(parameters, EP_WINDOW_POSITION_Y))
-            graphics->SetWindowPosition(GetParameter(parameters, EP_WINDOW_POSITION_X).GetInt(),
-                GetParameter(parameters, EP_WINDOW_POSITION_Y).GetInt());
-
 #ifdef URHO3D_OPENGL
         if (HasParameter(parameters, EP_FORCE_GL2))
             graphics->SetForceGL2(GetParameter(parameters, EP_FORCE_GL2).GetBool());
@@ -261,8 +257,16 @@ bool Engine::Initialize(const VariantMap& parameters)
         ))
             return false;
 
+        if (HasParameter(parameters, EP_WINDOW_POSITION_X) && HasParameter(parameters, EP_WINDOW_POSITION_Y))
+            graphics->SetWindowPosition(GetParameter(parameters, EP_WINDOW_POSITION_X).GetInt(),
+                GetParameter(parameters, EP_WINDOW_POSITION_Y).GetInt());
+
+        if (HasParameter(parameters, EP_WINDOW_MAXIMIZE) && GetParameter(parameters, EP_WINDOW_MAXIMIZE).GetBool())
+            graphics->Maximize();
+
         graphics->SetShaderCacheDir(GetParameter(parameters, EP_SHADER_CACHE_DIR, fileSystem->GetAppPreferencesDir(
-            GetParameter(parameters, EP_ORGANIZATION_NAME, "urho3d").GetString(), "shadercache")).GetString());
+            GetParameter(parameters, EP_ORGANIZATION_NAME, "urho3d").GetString(),
+            GetParameter(parameters, EP_APPLICATION_NAME, "engine").GetString())).GetString() + "shadercache/");
 
         if (HasParameter(parameters, EP_DUMP_SHADERS))
             graphics->BeginDumpShaders(GetParameter(parameters, EP_DUMP_SHADERS, EMPTY_STRING).GetString());

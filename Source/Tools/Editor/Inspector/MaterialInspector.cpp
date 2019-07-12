@@ -47,11 +47,26 @@ using namespace ImGui::litterals;
 namespace Urho3D
 {
 
-MaterialInspector::MaterialInspector(Context* context, Material* material)
+MaterialInspector::MaterialInspector(Context* context)
     : PreviewInspector(context)
-    , inspectable_(new Inspectable::Material(material))
     , attributeInspector_(context)
 {
+}
+
+void MaterialInspector::RegisterObject(Context* context)
+{
+    context->RegisterFactory<MaterialInspector>();
+}
+
+void MaterialInspector::SetResource(const ea::string& resourceName)
+{
+    auto* material = GetCache()->GetResource<Material>(resourceName);
+    if (!material)
+        return;
+
+    BaseClassName::SetResource(resourceName);
+
+    inspectable_ = new Inspectable::Material(material);
     auto autoSave = [this](StringHash, VariantMap&) {
         // Auto-save material on modification
         auto* material = inspectable_->GetMaterial();
@@ -135,7 +150,7 @@ void MaterialInspector::RenderCustomWidgets(VariantMap& args)
             ui::IdScope idScope(i);
 
             auto tech = material->GetTechniqueEntry(i);
-            auto* modification = ui::GetUIState<ModifiedStateTracker<TechniqueEntry>>();
+            auto* modification = ui::GetUIState<ModifiedStateTracker<TechniqueEntry, bool>>();
 
             ui::Columns();
             ea::string techName = tech.technique_->GetName();
@@ -284,7 +299,7 @@ void MaterialInspector::RenderCustomWidgets(VariantMap& args)
         {
             const ea::string& parameterName = pair.second.name_;
             ui::IdScope id(parameterName.c_str());
-            auto* modification = ui::GetUIState<ModifiedStateTracker<Variant>>();
+            auto* modification = ui::GetUIState<ModifiedStateTracker<Variant, bool>>();
 
             ui::NewLine();
             ui::SameLine(20_dpx);

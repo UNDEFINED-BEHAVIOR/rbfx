@@ -20,10 +20,9 @@
 # THE SOFTWARE.
 #
 
-
-if (URHO3D_NO_PLAYER)
-    return()
-endif()
+if (MINI_URHO OR WEB)
+    return ()
+endif ()
 
 add_subdirectory(Common)
 

@@ -57,10 +57,11 @@
 #include "Tabs/ResourceTab.h"
 #include "Tabs/PreviewTab.h"
 #include "Pipeline/Commands/CookScene.h"
-#include "Pipeline/GlobResources.h"
-#include "Pipeline/SubprocessExec.h"
 #include "Pipeline/Commands/BuildAssets.h"
+#include "Pipeline/Importers/ModelImporter.h"
+#include "Pipeline/Importers/SceneConverter.h"
 #include "Inspector/MaterialInspector.h"
+#include "Inspector/ModelInspector.h"
 #include "Tabs/ProfilerTab.h"
 
 using namespace ui::litterals;
@@ -113,13 +114,52 @@ void Editor::Setup()
     engineParameters_[EP_WINDOW_TITLE] = GetTypeName();
     engineParameters_[EP_HEADLESS] = false;
     engineParameters_[EP_FULL_SCREEN] = false;
-    engineParameters_[EP_WINDOW_HEIGHT] = 1080;
-    engineParameters_[EP_WINDOW_WIDTH] = 1920;
     engineParameters_[EP_LOG_LEVEL] = LOG_DEBUG;
     engineParameters_[EP_WINDOW_RESIZABLE] = true;
     engineParameters_[EP_AUTOLOAD_PATHS] = "";
     engineParameters_[EP_RESOURCE_PATHS] = "CoreData;EditorData";
     engineParameters_[EP_RESOURCE_PREFIX_PATHS] = coreResourcePrefixPath_;
+    engineParameters_[EP_WINDOW_MAXIMIZE] = true;
+
+    // Load editor settings
+    {
+        auto* fs = GetFileSystem();
+        ea::string editorSettingsDir = fs->GetAppPreferencesDir("rbfx", "Editor");
+        if (!fs->DirExists(editorSettingsDir))
+            fs->CreateDir(editorSettingsDir);
+
+        ea::string editorSettingsFile = editorSettingsDir + "Editor.json";
+        if (fs->FileExists(editorSettingsFile))
+        {
+            JSONFile file(context_);
+            if (file.LoadFile(editorSettingsFile))
+            {
+                editorSettings_ = file.GetRoot();
+
+                // Load window geometry
+                {
+                    JSONValue& window = editorSettings_["window"];
+                    if (window.IsObject())
+                    {
+                        if (window.Contains("size"))
+                        {
+                            IntVector2 size = window["size"].GetVariantValue(VAR_INTVECTOR2).GetIntVector2();
+                            engineParameters_[EP_WINDOW_WIDTH] = size.x_;
+                            engineParameters_[EP_WINDOW_HEIGHT] = size.y_;
+                        }
+                        if (window.Contains("pos"))
+                        {
+                            IntVector2 pos = window["pos"].GetVariantValue(VAR_INTVECTOR2).GetIntVector2();
+                            engineParameters_[EP_WINDOW_POSITION_X] = pos.x_;
+                            engineParameters_[EP_WINDOW_POSITION_Y] = pos.y_;
+                        }
+                        if (window.Contains("maximized"))
+                            engineParameters_[EP_WINDOW_MAXIMIZE] = window["maximized"].GetVariantValue(VAR_BOOL).GetBool();
+                    }
+                }
+            }
+        }
+    }
 
     GetLog()->SetLogFormat("[%H:%M:%S] [%l] [%n] : %v");
 
@@ -141,10 +181,14 @@ void Editor::Setup()
     EditorSceneSettings::RegisterObject(context_);
     Inspectable::Material::RegisterObject(context_);
 
-    // Pipeline
-    Converter::RegisterObject(context_);
-    GlobResources::RegisterObject(context_);
-    SubprocessExec::RegisterObject(context_);
+    // Inspectors
+    ModelInspector::RegisterObject(context_);
+    MaterialInspector::RegisterObject(context_);
+
+    // Importers
+    ModelImporter::RegisterObject(context_);
+    SceneConverter::RegisterObject(context_);
+    Asset::RegisterObject(context_);
 
     // Define custom command line parameters here
     auto& cmd = GetCommandLineParser();
@@ -240,13 +284,8 @@ void Editor::Start()
         }
         else
             exiting_ = true;
-
-        if (project_ && exiting_)
-        {
-            project_->SaveProject();
-            CloseProject();
-        }
     });
+    SubscribeToEvent(E_EDITORPROJECTLOADING, std::bind(&Editor::UpdateWindowTitle, this, EMPTY_STRING));
     if (!defaultProjectPath_.empty())
     {
         ui::GetIO().IniFilename = nullptr;  // Avoid creating imgui.ini in some cases
@@ -254,18 +293,6 @@ void Editor::Start()
     }
     else
         SetupSystemUI();
-
-    // Load editor settings
-    {
-        auto* fs = GetFileSystem();
-        ea::string editorSettingsDir = fs->GetAppPreferencesDir("rbfx", "Editor");
-        if (!fs->DirExists(editorSettingsDir))
-            fs->CreateDir(editorSettingsDir);
-
-        JSONFile file(context_);
-        if (file.LoadFile(editorSettingsDir + "Editor.json"))
-            editorSettings_ = file.GetRoot();
-    }
 }
 
 void Editor::ExecuteSubcommand(SubCommand* cmd)
@@ -289,7 +316,20 @@ void Editor::ExecuteSubcommand(SubCommand* cmd)
 void Editor::Stop()
 {
     // Save editor settings
+    if (!engine_->IsHeadless())
     {
+        // Save window geometry
+        {
+            JSONValue& window = editorSettings_["window"];
+            window.SetType(JSON_OBJECT);
+            window["size"].SetType(JSON_NULL);
+            window["size"].SetVariantValue(GetGraphics()->GetSize(), context_);
+            window["pos"].SetType(JSON_NULL);
+            window["pos"].SetVariantValue(GetGraphics()->GetWindowPosition(), context_);
+            window["maximized"].SetType(JSON_NULL);
+            window["maximized"].SetVariantValue(GetGraphics()->GetMaximized(), context_);
+        }
+
         auto* fs = GetFileSystem();
         ea::string editorSettingsDir = fs->GetAppPreferencesDir("rbfx", "Editor");
         if (!fs->DirExists(editorSettingsDir))
@@ -392,12 +432,16 @@ void Editor::OnUpdate(VariantMap& args)
                 for (int i = 0; i < recents.Size(); i++)
                 {
                     const ea::string& projectPath = recents[i].GetString();
-                    Image img(editor->context_);
-                    if (img.LoadFile(projectPath + ".snapshot.png"))
+                    ea::string snapshotFile = AddTrailingSlash(projectPath) + ".snapshot.png";
+                    if (editor->GetFileSystem()->FileExists(snapshotFile))
                     {
-                        SharedPtr<Texture2D> texture(editor->context_->CreateObject<Texture2D>());
-                        texture->SetData(&img);
-                        snapshots_[i] = texture;
+                        Image img(editor->context_);
+                        if (img.LoadFile(snapshotFile))
+                        {
+                            SharedPtr<Texture2D> texture(editor->context_->CreateObject<Texture2D>());
+                            texture->SetData(&img);
+                            snapshots_[i] = texture;
+                        }
                     }
                 }
             }
@@ -507,6 +551,11 @@ void Editor::OnUpdate(VariantMap& args)
         else
         {
             GetWorkQueue()->Complete(0);
+            if (project_.NotNull())
+            {
+                project_->SaveProject();
+                CloseProject();
+            }
             engine_->Exit();
         }
     }

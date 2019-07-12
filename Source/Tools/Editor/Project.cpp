@@ -155,6 +155,8 @@ bool Project::LoadProject(const ea::string& projectPath)
     if (GetSystemUI())
     {
         uiConfigPath_ = projectFileDir_ + ".ui.ini";
+        isNewProject_ = !GetFileSystem()->FileExists(uiConfigPath_);
+
         ui::GetIO().IniFilename = uiConfigPath_.c_str();
 
         ImGuiSettingsHandler handler;
@@ -162,8 +164,6 @@ bool Project::LoadProject(const ea::string& projectPath)
         handler.TypeHash = ImHashStr(handler.TypeName, 0, 0);
         handler.ReadOpenFn = [](ImGuiContext* context, ImGuiSettingsHandler* handler, const char* name) -> void*
         {
-            if (strcmp(name, "Window") == 0)
-                return (void*) 1;
             return (void*) name;
         };
         handler.ReadLineFn = [](ImGuiContext*, ImGuiSettingsHandler*, void* entry, const char* line)
@@ -171,26 +171,24 @@ bool Project::LoadProject(const ea::string& projectPath)
             SystemUI* systemUI = ui::GetSystemUI();
             auto* editor = systemUI->GetSubsystem<Editor>();
 
-            if (entry == (void*) 1)
+            const char* name = static_cast<const char*>(entry);
+            if (strcmp(name, "Window") == 0)
             {
-                auto* project = systemUI->GetSubsystem<Project>();
-                project->isNewProject_ = false;
                 editor->CreateDefaultTabs();
 
-                int x, y, w, h;
-                if (sscanf(line, "Rect=%d,%d,%d,%d", &x, &y, &w, &h) == 4)
-                {
-                    w = Max(w, 100);            // Foot-shooting prevention
-                    h = Max(h, 100);
-                    systemUI->GetGraphics()->SetWindowPosition(x, y);
-                    systemUI->GetGraphics()->SetMode(w, h);
-                }
-                else
-                    return;
+                // int x, y, w, h;
+                // if (sscanf(line, "Rect=%d,%d,%d,%d", &x, &y, &w, &h) == 4)
+                // {
+                //     w = Max(w, 100);            // Foot-shooting prevention
+                //     h = Max(h, 100);
+                //     systemUI->GetGraphics()->SetWindowPosition(x, y);
+                //     systemUI->GetGraphics()->SetMode(w, h);
+                // }
+                // else
+                //     return;
             }
             else
             {
-                const char* name = static_cast<const char*>(entry);
 
                 Tab* tab = editor->GetTabByName(name);
                 if (tab == nullptr)
@@ -203,14 +201,14 @@ bool Project::LoadProject(const ea::string& projectPath)
         };
         handler.WriteAllFn = [](ImGuiContext* imgui_ctx, ImGuiSettingsHandler* handler, ImGuiTextBuffer* buf)
         {
-            buf->appendf("[Project][Window]\n");
             auto* systemUI = ui::GetSystemUI();
             auto* editor = systemUI->GetSubsystem<Editor>();
-            IntVector2
-            wSize = systemUI->GetGraphics()->GetSize();
-            IntVector2
-            wPos = systemUI->GetGraphics()->GetWindowPosition();
-            buf->appendf("Rect=%d,%d,%d,%d\n", wPos.x_, wPos.y_, wSize.x_, wSize.y_);
+            buf->appendf("[Project][Window]\n");
+            // IntVector2
+            // wSize = systemUI->GetGraphics()->GetSize();
+            // IntVector2
+            // wPos = systemUI->GetGraphics()->GetWindowPosition();
+            // buf->appendf("Rect=%d,%d,%d,%d\n", wPos.x_, wPos.y_, wSize.x_, wSize.y_);
 
             // Save tabs
             for (auto& tab : editor->GetContentTabs())
@@ -253,37 +251,13 @@ bool Project::LoadProject(const ea::string& projectPath)
         }
     }
 
-    // Pipeline.json
     // Register asset dirs
     GetCache()->AddResourceDir(GetCachePath(), 0);
     GetCache()->AddResourceDir(GetResourcePath(), 1);
 
-    ea::string filePath(projectFileDir_ + "Pipeline.json");
-    if (GetFileSystem()->Exists(filePath))
-    {
-        JSONFile file(context_);
-        if (!file.LoadFile(filePath))
-        {
-            URHO3D_LOGERROR("Loading 'Pipeline.json' failed likely due to syntax error or insufficient access.");
-            return false;
-        }
-
-        if (!pipeline_.LoadJSON(file.GetRoot()))
-        {
-            URHO3D_LOGERROR("Deserialization of 'Pipeline.json' failed.");
-            return false;
-        }
-    }
-
-    if (!GetEngine()->IsHeadless())
-    {
-        pipeline_.BuildCache(CONVERTER_ALWAYS);
-        pipeline_.EnableWatcher();
-        GetSubsystem<Editor>()->UpdateWindowTitle();
-    }
-
     // Project.json
     {
+        using namespace EditorProjectLoading;
         ea::string filePath(projectFileDir_ + "Project.json");
         if (GetFileSystem()->Exists(filePath))
         {
@@ -327,9 +301,17 @@ bool Project::LoadProject(const ea::string& projectPath)
             if (defaultSceneIt != root.end())
                 defaultScene_ = defaultSceneIt->second.GetString();
 
-            using namespace EditorProjectLoading;
+            auto flavorsIt = root.find("flavors");
+            if (flavorsIt != root.end())
+            {
+                const JSONValue& flavors = flavorsIt->second;
+                for (int i = 0; i < flavors.Size(); i++)
+                    pipeline_.AddFlavor(flavors[i].GetString());
+            }
             SendEvent(E_EDITORPROJECTLOADING, P_ROOT, (void*)&root);
         }
+        else
+            SendEvent(E_EDITORPROJECTLOADING, P_ROOT, (void*)nullptr);
     }
 
     return true;
@@ -380,6 +362,9 @@ bool Project::SaveProject()
         }
 #endif
         root["default-scene"] = defaultScene_;
+
+        for (const ea::string& flavor : pipeline_.GetFlavors())
+            root["flavors"].Push(flavor);
 
         ea::string filePath(projectFileDir_ + "Project.json");
         if (!file.SaveFile(filePath))

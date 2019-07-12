@@ -22,35 +22,24 @@
 
 #pragma once
 
-
-#include <regex>
-#include "Converter.h"
-
+#include "Pipeline/Importers/AssetImporter.h"
 
 namespace Urho3D
 {
 
-class GlobResources : public Converter
+class SceneConverter : public AssetImporter
 {
-    URHO3D_OBJECT(GlobResources, Converter);
+URHO3D_OBJECT(SceneConverter, AssetImporter);
 public:
-    explicit GlobResources(Context* context);
-
+    explicit SceneConverter(Context* context);
+    /// Register object with the engine.
     static void RegisterObject(Context* context);
-
-    void Execute(const StringVector& input) override;
-
-protected:
-    void ConvertGlobToRegex();
-
-    StringVector glob_;
-    ea::vector<std::regex> regex_;
+    ///
+    void RenderInspector(const char* filter) override;
+    ///
+    bool Accepts(const ea::string& path) const override;
+    ///
+    bool Execute(Urho3D::Asset* input, const ea::string& inputFile, const ea::string& outputPath) override;
 };
-
-/// Return true if `string` matches any pattern specified in `patterns` list.
-bool MatchesAny(const ea::string& string, const ea::vector<std::regex>& patterns);
-/// Converts a glob expression to regex pattern. * matches anything except folder separators, ** matches anything
-/// including folder separators.
-std::regex GlobToRegex(const ea::string& expression);
 
 }

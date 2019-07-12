@@ -162,6 +162,32 @@ void Editor::RenderMenuBar()
 
         ui::EndMainMenuBar();
     }
+
+    if (!flavorPendingRemoval_.empty())
+        ui::OpenPopup("Remove Flavor?");
+
+    if (ui::BeginPopupModal("Remove Flavor?"))
+    {
+        ui::Text("You are about to remove '%s' flavor.", flavorPendingRemoval_.c_str());
+        ui::TextUnformatted("All asset settings of this flavor will be removed permanently.");
+        ui::TextUnformatted(ICON_FA_EXCLAMATION_TRIANGLE " This action can not be undone! " ICON_FA_EXCLAMATION_TRIANGLE);
+        ui::NewLine();
+
+        if (ui::Button(ICON_FA_TRASH " Remove"))
+        {
+            project_->GetPipeline().RemoveFlavor(flavorPendingRemoval_);
+            flavorPendingRemoval_.clear();
+            ui::CloseCurrentPopup();
+        }
+        ui::SameLine();
+        if (ui::Button(ICON_FA_TIMES " Cancel"))
+        {
+            flavorPendingRemoval_.clear();
+            ui::CloseCurrentPopup();
+        }
+
+        ui::EndPopup();
+    }
 }
 
 void Editor::RenderProjectMenu()
@@ -226,7 +252,7 @@ void Editor::RenderProjectMenu()
             GetFileSystem()->ScanDir(*sceneNames, project_->GetResourcePath(), "*.xml", SCAN_FILES, true);
             for (auto it = sceneNames->begin(); it != sceneNames->end();)
             {
-                if (GetContentType(*it) == CTYPE_SCENE)
+                if (GetContentType(context_, *it) == CTYPE_SCENE)
                     ++it;
                 else
                     it = sceneNames->erase(it);
@@ -292,6 +318,7 @@ void Editor::RenderProjectMenu()
             EP_MONITOR.c_str(),
             EP_MULTI_SAMPLE.c_str(),
             EP_ORGANIZATION_NAME.c_str(),
+            EP_APPLICATION_NAME.c_str(),
             EP_ORIENTATIONS.c_str(),
             EP_PACKAGE_CACHE_DIR.c_str(),
             EP_RENDER_PATH.c_str(),
@@ -317,6 +344,7 @@ void Editor::RenderProjectMenu()
             EP_WINDOW_POSITION_X.c_str(),
             EP_WINDOW_POSITION_Y.c_str(),
             EP_WINDOW_RESIZABLE.c_str(),
+            EP_WINDOW_MAXIMIZE.c_str(),
             EP_WINDOW_TITLE.c_str(),
             EP_WINDOW_WIDTH.c_str(),
             EP_WORKER_THREADS.c_str(),
@@ -342,6 +370,7 @@ void Editor::RenderProjectMenu()
             VAR_INT,    // EP_MONITOR
             VAR_INT,    // EP_MULTI_SAMPLE
             VAR_STRING, // EP_ORGANIZATION_NAME
+            VAR_STRING, // EP_APPLICATION_NAME
             VAR_STRING, // EP_ORIENTATIONS
             VAR_STRING, // EP_PACKAGE_CACHE_DIR
             VAR_STRING, // EP_RENDER_PATH
@@ -367,6 +396,7 @@ void Editor::RenderProjectMenu()
             VAR_INT,    // EP_WINDOW_POSITION_X
             VAR_INT,    // EP_WINDOW_POSITION_Y
             VAR_BOOL,   // EP_WINDOW_RESIZABLE
+            VAR_BOOL,   // EP_WINDOW_MAXIMIZE
             VAR_STRING, // EP_WINDOW_TITLE
             VAR_INT,    // EP_WINDOW_WIDTH
             VAR_INT,    // EP_WORKER_THREADS
@@ -449,12 +479,76 @@ void Editor::RenderProjectMenu()
         ui::EndMenu();
     }
 
+    if (ui::BeginMenu("Flavors"))
+    {
+        struct State
+        {
+            ///
+            ea::string editBuffer_;
+            ///
+            ea::string editFlavor_;
+            ///
+            ea::string addBuffer_;
+        };
+
+        auto* state = ui::GetUIState<State>();
+        auto& pipeline = project_->GetPipeline();
+
+        for (const auto& flavor : pipeline.GetFlavors())
+        {
+            ui::PushID(flavor.c_str());
+            if (state->editFlavor_ == flavor)
+            {
+                ui::SetNextItemWidth(150);
+                ui::InputText("###edit-flavor", &state->editBuffer_);
+                ui::SameLine();
+                if (ui::ToolbarButton(ICON_FA_CHECK))
+                {
+                    pipeline.RenameFlavor(state->editFlavor_, state->editBuffer_);
+                    ui::PopID();
+                    break;
+                }
+            }
+            else
+            {
+                ui::TextElided(flavor.c_str(), 150);
+                if (flavor != DEFAULT_PIPELINE_FLAVOR)
+                {
+                    ui::SameLine();
+                    ui::BeginButtonGroup();
+                    if (ui::ToolbarButton(ICON_FA_EDIT))
+                    {
+                        state->editBuffer_ = state->editFlavor_ = flavor;
+                    }
+                    ui::SameLine(0, 0);
+                    if (ui::ToolbarButton(ICON_FA_TRASH))
+                        flavorPendingRemoval_ = flavor;
+                    ui::EndButtonGroup();
+                }
+            }
+            ui::PopID();
+        }
+
+        ui::Separator();
+
+        ui::SetNextItemWidth(150);
+        ui::InputText("###add-flavor", &state->addBuffer_);
+        ui::SameLine();
+        if (ui::ToolbarButton(ICON_FA_PLUS))
+        {
+            pipeline.AddFlavor(state->addBuffer_);
+            state->addBuffer_.clear();
+        }
+
+        ui::EndMenu();
+    }
+
     ui::Separator();
 
-    if (ui::MenuItem(ICON_FA_BOXES " Package files"))
-    {
-        GetSubsystem<Project>()->GetPipeline().CreatePaksAsync();
-    }
+    // if (ui::MenuItem(ICON_FA_BOXES " Package files"))
+    // {
+    //     GetSubsystem<Project>()->GetPipeline().CreatePaksAsync();
+    // }
 }
 
 }

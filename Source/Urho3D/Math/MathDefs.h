@@ -102,6 +102,9 @@ inline unsigned FloatToRawIntBits(float value)
 /// Check whether a floating point value is NaN.
 template <class T> inline bool IsNaN(T value) { return std::isnan(value); }
 
+/// Check whether a floating point value is positive or negative infinity
+template <class T> inline bool IsInf(T value) { return std::isinf(value); }
+
 /// Clamp a number to a range.
 template <class T>
 inline T Clamp(T value, T min, T max)
@@ -159,6 +162,14 @@ inline T Mod(T x, T y) { return fmod(x, y); }
 /// Return remainder of X/Y.
 template<typename T, typename std::enable_if<std::is_integral<T>::value>::type* = nullptr>
 inline T Mod(T x, T y) { return x % y; }
+
+/// Return positive remainder of X/Y.
+template<typename T, typename std::enable_if<std::is_integral<T>::value>::type* = nullptr>
+inline T AbsMod(T x, T y)
+{
+    const T result = x % y;
+    return result < 0 ? result + y : result;
+}
 
 /// Return fractional part of passed value in range [0, 1).
 template <class T> inline T Fract(T value) { return value - floor(value); }

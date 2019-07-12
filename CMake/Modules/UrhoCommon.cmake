@@ -24,6 +24,7 @@ include(ucm)
 
 # Set compiler variable
 set ("${CMAKE_CXX_COMPILER_ID}" ON)
+set (CMAKE_INSTALL_RPATH "$ORIGIN")
 
 # Configure variables
 set (URHO3D_URL "https://github.com/urho3d/Urho3D")
@@ -60,8 +61,10 @@ else ()
 endif ()
 set (DEST_LIBRARY_DIR_CONFIG ${DEST_LIBRARY_DIR})
 
-set (ENV{CMAKE_GENERATOR} "${CMAKE_GENERATOR}")
 if (MSVC OR "${CMAKE_GENERATOR}" STREQUAL "Xcode")
+    set (MULTI_CONFIG_PROJECT ON)
+endif ()
+if (MULTI_CONFIG_PROJECT)
     set (DEST_BIN_DIR_CONFIG ${DEST_BIN_DIR_CONFIG}/$<CONFIG>)
     set (DEST_LIBRARY_DIR_CONFIG ${DEST_LIBRARY_DIR}/$<CONFIG>)
 endif ()
@@ -219,7 +222,11 @@ macro (add_sample)
     endif()
 
     if ("${SAMPLE_LANG}" STREQUAL CSHARP)
-        add_target_csharp(${SAMPLE_TARGET} ${CMAKE_CURRENT_SOURCE_DIR}/${SAMPLE_TARGET}.csproj Urho3DNet)
+        add_target_csharp(
+            TARGET ${SAMPLE_TARGET}
+            PROJECT ${CMAKE_CURRENT_SOURCE_DIR}/${SAMPLE_TARGET}.csproj
+            OUTPUT ${CMAKE_BINARY_DIR}/${DEST_BIN_DIR_CONFIG}/${SAMPLE_TARGET}.${SAMPLE_EXT}
+            DEPENDS Urho3DNet)
         if ("${SAMPLE_TYPE}" STREQUAL "SHARED")
             set (SAMPLE_EXT "dll")
         else ()
@@ -307,7 +314,41 @@ function(vs_group_subdirectory_targets DIR FOLDER_NAME)
     endforeach()
 endfunction()
 
+function (add_msbuild_target)
+    if (URHO3D_CSHARP)
+        cmake_parse_arguments(MSBUILD "AUTORUN_AT_CONFIGURE;EXCLUDE_FROM_ALL" "TARGET;DEPENDS" "ARGS;BYPRODUCTS" ${ARGN})
+
+        find_program(MSBUILD msbuild PATHS /Library/Frameworks/Mono.framework/Versions/Current/bin ${MONO_PATH}/bin)
+        if (NOT MSBUILD)
+            if (WIN32)
+                message(FATAL_ERROR "MSBuild could not be found.")
+            else ()
+                message(FATAL_ERROR "MSBuild could not be found. You may need to install 'msbuild' package.")
+            endif ()
+        endif ()
+        if ("${CMAKE_HOST_SYSTEM_NAME}" STREQUAL "Linux")
+            # Workaround for some cases where csc has issues when invoked by CMake.
+            set (TERM_WORKAROUND env TERM=xterm)
+        endif ()
+        add_custom_target(${MSBUILD_TARGET} ALL
+            COMMAND ${TERM_WORKAROUND} ${MSBUILD} ${MSBUILD_ARGS}
+            /p:CMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}/
+            /consoleloggerparameters:ErrorsOnly
+            BYPRODUCTS ${MSBUILD_BYPRODUCTS}
+            DEPENDS ${MSBUILD_DEPENDS})
+        if (MSBUILD_EXCLUDE_FROM_ALL)
+            set_property(TARGET ${MSBUILD_TARGET} PROPERTY EXCLUDE_FROM_ALL ON)
+        endif ()
+        if (MSBUILD_AUTORUN_AT_CONFIGURE)
+            execute_process(COMMAND ${TERM_WORKAROUND} ${MSBUILD} ${MSBUILD_ARGS}
+                /p:CMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}/
+                /consoleloggerparameters:ErrorsOnly)
+        endif ()
+    endif ()
+endfunction ()
+
 if (URHO3D_CSHARP)
+    set (CMAKE_DOTNET_TARGET_FRAMEWORK_VERSION v4.7.1)
     if (NOT SWIG_EXECUTABLE)
         set (SWIG_EXECUTABLE ${CMAKE_BINARY_DIR}/${DEST_BIN_DIR_CONFIG}/swig${CMAKE_EXECUTABLE_SUFFIX})
     endif ()
@@ -319,46 +360,32 @@ if (URHO3D_CSHARP)
     if (NOT WIN32 OR URHO3D_WITH_MONO)
         find_package(Mono REQUIRED)
     endif ()
-    find_program(MSBUILD msbuild PATHS /Library/Frameworks/Mono.framework/Versions/Current/bin ${MONO_PATH}/bin)
-    if (NOT MSBUILD)
-        if (WIN32)
-            message(FATAL_ERROR "MSBuild could not be found.")
-        else ()
-            message(FATAL_ERROR "MSBuild could not be found. You may need to install 'msbuild' package.")
-        endif ()
-    endif ()
 
     if (CMAKE_SIZEOF_VOID_P EQUAL 8)
         set (CSHARP_PLATFORM x64)
     else ()
         set (CSHARP_PLATFORM x86)
     endif ()
-    set (MSBUILD_COMMON_PARAMETERS /p:BuildDir="${CMAKE_BINARY_DIR}/" /p:Platform=${CSHARP_PLATFORM}
-                                   /p:Configuration=$<CONFIG> /consoleloggerparameters:ErrorsOnly)
-
-    if (URHO3D_WITH_MONO)
-        list (APPEND MSBUILD_COMMON_PARAMETERS /p:TargetFramework=net471)
-    endif ()
-
     if (MSVC)
-        set (CSHARP_SOLUTION ${CMAKE_BINARY_DIR}/Urho3D.sln)
+        file (GLOB CSHARP_SOLUTION ${CMAKE_BINARY_DIR}/*.sln)
     else ()
         set (CSHARP_SOLUTION ${Urho3D_SOURCE_DIR}/Urho3D.part.sln)
     endif ()
 
     if (NOT MSVC)
-        execute_process(COMMAND
-            ${TERM_WORKAROUND} ${MSBUILD} ${CSHARP_SOLUTION} /p:BuildDir="${CMAKE_BINARY_DIR}/" /t:restore /m /consoleloggerparameters:ErrorsOnly)
-        add_custom_target(NugetRestore COMMAND
-            ${TERM_WORKAROUND} ${MSBUILD} ${CSHARP_SOLUTION} /p:BuildDir="${CMAKE_BINARY_DIR}/" /t:restore /m /consoleloggerparameters:ErrorsOnly)
-        set_property(TARGET NugetRestore PROPERTY EXCLUDE_FROM_ALL ON)
+        add_msbuild_target(TARGET NugetRestore EXCLUDE_FROM_ALL AUTORUN_AT_CONFIGURE ARGS
+            ${CSHARP_SOLUTION} /t:restore /m)
     endif ()
 
     # Strong name signatures
-    find_program(SN sn PATHS PATHS /Library/Frameworks/Mono.framework/Versions/Current/bin ${MONO_PATH}/bin)
+    find_program(SN sn PATHS PATHS
+        ${MONO_PATH}/bin
+        /Library/Frameworks/Mono.framework/Versions/Current/bin
+        $ENV{WindowsSDK_ExecutablePath_${CSHARP_PLATFORM}}
+        ENV PATH)
     if (NOT SN)
         if (WIN32)
-            message(FATAL_ERROR "sn could not be found. Please install .NET framework 4.7.1.")
+            message(FATAL_ERROR "sn could not be found. Please install .NET framework.")
         else ()
             message(FATAL_ERROR "sn could not be found. Please install Mono.")
         endif ()
@@ -366,7 +393,7 @@ if (URHO3D_CSHARP)
     if (NOT EXISTS ${CMAKE_BINARY_DIR}/CSharp.snk)
         execute_process(COMMAND ${SN} -k ${CMAKE_BINARY_DIR}/CSharp.snk)
     endif ()
-    if (NOT EXISTS ${CMAKE_BINARY_DIR}/CSharp.snk.pub)
+    if (NOT EXISTS ${CMAKE_CURRENT_BINARY_DIR}/CSharp.snk.pub)
         execute_process(COMMAND ${SN} -p ${CMAKE_BINARY_DIR}/CSharp.snk ${CMAKE_BINARY_DIR}/CSharp.snk.pub)
     endif ()
 
@@ -380,10 +407,14 @@ if (URHO3D_CSHARP)
     set(SNK_PUB_KEY "${SNK_PUB_KEY}" CACHE STRING "Public key for .NET assemblies" FORCE)
 endif()
 
-if ("${CMAKE_HOST_SYSTEM_NAME}" STREQUAL "Linux")
-    # Workaround for some cases where csc has issues when invoked by CMake.
-    set (TERM_WORKAROUND env TERM=xterm)
-endif ()
+
+# For .csproj embedded into visual studio solution
+configure_file("${Urho3D_SOURCE_DIR}/CMake/CMake.props.in" "${CMAKE_BINARY_DIR}/CMake.props" @ONLY)
+# For .csproj that gets built by cmake invoking msbuild
+set (ENV{CMAKE_GENERATOR} "${CMAKE_GENERATOR}")
+set (ENV{CMAKE_BINARY_DIR "${CMAKE_BINARY_DIR}/")
+set (ENV{RBFX_BINARY_DIR "${Urho3D_BINARY_DIR}/")
+set (ENV{CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/")
 
 macro (__TARGET_GET_PROPERTIES_RECURSIVE OUTPUT TARGET PROPERTY)
     get_target_property(values ${TARGET} ${PROPERTY})
@@ -393,25 +424,36 @@ macro (__TARGET_GET_PROPERTIES_RECURSIVE OUTPUT TARGET PROPERTY)
     get_target_property(values ${TARGET} INTERFACE_LINK_LIBRARIES)
     if (values)
         foreach(lib ${values})
-            if (TARGET ${lib})
+            if (TARGET ${lib} AND NOT "${lib}" IN_LIST __CHECKED_LIBRARIES)
+                list (APPEND __CHECKED_LIBRARIES "${lib}")
                 __TARGET_GET_PROPERTIES_RECURSIVE(${OUTPUT} ${lib} ${PROPERTY})
             endif ()
         endforeach()
     endif()
 endmacro()
 
-macro (add_target_csharp TARGET PROJECT_FILE)
+function (add_target_csharp)
+    cmake_parse_arguments (CS "" "TARGET;PROJECT;OUTPUT" "DEPENDS" ${ARGN})
     if (WIN32 AND NOT URHO3D_WITH_MONO)
-        include_external_msproject(${TARGET} ${PROJECT_FILE} TYPE FAE04EC0-301F-11D3-BF4B-00C04F79EFBC ${ARGN})
+        include_external_msproject(${CS_TARGET} ${CS_PROJECT} TYPE FAE04EC0-301F-11D3-BF4B-00C04F79EFBC ${CS_DEPENDS})
     else ()
-        add_custom_target(${TARGET}
-            COMMAND ${TERM_WORKAROUND} ${MSBUILD} ${PROJECT_FILE} ${MSBUILD_COMMON_PARAMETERS}
-            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-            DEPENDS ${ARGN}
+        if (CMAKE_SIZEOF_VOID_P EQUAL 8)
+            set (CSHARP_PLATFORM x64)
+        else ()
+            set (CSHARP_PLATFORM x86)
+        endif ()
+        if (MULTI_CONFIG_PROJECT)
+            set (CSHARP_CONFIG $<CONFIG>)
+        else ()
+            set (CSHARP_CONFIG ${CMAKE_BUILD_TYPE})
+        endif ()
+        add_msbuild_target(TARGET ${CS_TARGET} DEPENDS ${CS_DEPENDS} ARGS ${CS_PROJECT}
+            /p:Platform=${CSHARP_PLATFORM}
+            /p:Configuration=${CSHARP_CONFIG}
+            BYPRODUCTS ${CS_OUTPUT_FILE}
         )
-        set_target_properties(${TARGET} PROPERTIES EXCLUDE_FROM_ALL OFF)
     endif ()
-endmacro ()
+endfunction ()
 
 macro (csharp_bind_target)
     if (NOT URHO3D_CSHARP)
@@ -513,7 +555,7 @@ macro (csharp_bind_target)
     #        target_compile_options(${CSHARP_LIBRARY_NAME} PRIVATE ${MONO_CFLAGS})
     #    endif ()
 
-    if (MSVC)
+    if (MULTI_CONFIG_PROJECT)
         set (NET_OUTPUT_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/$<CONFIG>)
     else ()
         set (NET_OUTPUT_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
@@ -521,10 +563,13 @@ macro (csharp_bind_target)
         set (FACADES Facades/)
     endif ()
     if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${BIND_MANAGED_TARGET}.csproj")
-        add_target_csharp(${BIND_MANAGED_TARGET} ${CMAKE_CURRENT_SOURCE_DIR}/${BIND_MANAGED_TARGET}.csproj ${CSHARP_LIBRARY_NAME})
-        install (FILES ${NET_OUTPUT_DIRECTORY}/${BIND_MANAGED_TARGET}.dll $<TARGET_FILE:${CSHARP_LIBRARY_NAME}>
-            DESTINATION ${DEST_LIBRARY_DIR}
-        )
+        add_target_csharp(
+            TARGET ${BIND_MANAGED_TARGET}
+            PROJECT ${CMAKE_CURRENT_SOURCE_DIR}/${BIND_MANAGED_TARGET}.csproj
+            OUTPUT ${NET_OUTPUT_DIRECTORY}/${BIND_MANAGED_TARGET}.dll
+            DEPENDS ${CSHARP_LIBRARY_NAME})
+        install (TARGETS ${CSHARP_LIBRARY_NAME} EXPORT Urho3D LIBRARY DESTINATION ${DEST_LIBRARY_DIR})
+        install (FILES ${NET_OUTPUT_DIRECTORY}/${BIND_MANAGED_TARGET}.dll DESTINATION ${DEST_LIBRARY_DIR})
     endif ()
 
     file (GLOB_RECURSE EXTRA_NATIVE_FILES ${CMAKE_CURRENT_SOURCE_DIR}/Native/*.h ${CMAKE_CURRENT_SOURCE_DIR}/Native/*.cpp)
