@@ -53,9 +53,13 @@ if (NOT DEFINED CMAKE_CXX_STANDARD)
     set (CMAKE_CXX_STANDARD 17)
 endif ()
 
-# Workarounds
-if (EMSCRIPTEN OR APPLE)
+# Workarounds. They are mirrored in Urho3D target build script so that projects linking to it would inherit settings.
+if (WEB OR ANDROID)
+    set (URHO3D_CXX_STANDARD ${CMAKE_CXX_STANDARD})
     ucm_add_flags(CXX -std=gnu++${CMAKE_CXX_STANDARD})
+    # NDK bundles old cmake and insists on usiing it, That version chokes on standard being set to 17 while
+    # crosscompiler works just fine.
+    unset (CMAKE_CXX_STANDARD)
 endif ()
 if (APPLE)
     ucm_add_flags(CXX -stdlib=libc++)
