@@ -301,6 +301,34 @@ if (NOT MINI_URHO)
     endif ()
 endif ()
 
+## Emscripten-specific setup
+if (WEB)
+    
+    if(EMSCRIPTEN_WASM)
+        target_link_libraries(Urho3D PUBLIC "-s WASM=1")
+        # https://github.com/urho3d/Urho3D/issues/2447#issuecomment-494262359
+        target_link_libraries(Urho3D PUBLIC "-s \"BINARYEN_TRAP_MODE='clamp'\"")
+    endif()
+    if (URHO3D_THREADING)
+        target_compile_options(Urho3D PRIVATE "-s USE_PTHREADS=1")
+    endif ()
+
+    ## Specific version patches
+
+    # Since version 1.37.25 emcc reduces default runtime exports, but we need "UTF8ToString" so it needs to be explicitly declared now
+    # (See https://github.com/kripken/emscripten/commit/3bc1f9f08b9f420680124af703c787244468cedc for more detail)
+    if (NOT EMSCRIPTEN_EMCC_VERSION VERSION_LESS 1.37.25)
+        target_link_libraries(Urho3D PUBLIC "-s EXTRA_EXPORTED_RUNTIME_METHODS=\"['UTF8ToString']\"")
+    endif ()
+    # Since version 1.37.28 emcc reduces default runtime exports, but we need "FS" so it needs to be explicitly requested now
+    # (See https://github.com/kripken/emscripten/commit/f2191c1223e8261bf45f4e27d2ba4d2e9d8b3341 for more detail)
+    if (NOT EMSCRIPTEN_EMCC_VERSION VERSION_LESS 1.37.28)
+        target_link_libraries(Urho3D PUBLIC "-s FORCE_FILESYSTEM=1")
+    endif ()
+
+
+endif ()
+
 if (BUILD_SHARED_LIBS)
     target_compile_definitions(Urho3D PRIVATE -DURHO3D_EXPORTS INTERFACE -DURHO3D_IMPORTS)
 else ()

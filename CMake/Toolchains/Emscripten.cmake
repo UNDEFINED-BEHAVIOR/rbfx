@@ -186,3 +186,39 @@ endif ()
 
 set (EMSCRIPTEN 1)
 set (WEB 1)
+
+## version checks
+
+set(_MIN_EMSCRIPTEN_VER 1.38.20)
+if (EMSCRIPTEN_EMCC_VERSION VERSION_LESS ${_MIN_EMSCRIPTEN_VER})
+    message(FATAL_ERROR "Unsupported emscripten sdk version < ${_MIN_EMSCRIPTEN_VER}")
+endif ()
+unset(_MIN_EMSCRIPTEN_VER)
+
+### global compiler flags
+
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-warn-absolute-paths")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unknown-warning-option")
+
+set(CMAKE_CXX_FLAGS "${CMAKE_C_FLAGS}")
+
+
+## build mode specific flags
+
+set (CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -Oz")
+set (CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -DNDEBUG")
+
+set (CMAKE_CXX_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
+
+set (CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} -O3")
+# Remove variables to make the -O3 regalloc easier, embed data in asm.js to reduce number of moving part
+set (CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} -s AGGRESSIVE_VARIABLE_ELIMINATION=1")
+set (CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} --memory-init-file 0")
+
+set (CMAKE_MODULE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE}")
+
+# Preserve LLVM debug information, show line number debug comments, and generate source maps; always disable exception handling codegen
+set (CMAKE_EXE_LINKER_FLAGS_DEBUG "${CMAKE_EXE_LINKER_FLAGS_DEBUG} -g4")
+set (CMAKE_EXE_LINKER_FLAGS_DEBUG "${CMAKE_EXE_LINKER_FLAGS_DEBUG} -s DISABLE_EXCEPTION_CATCHING=1")
+
+set (CMAKE_MODULE_LINKER_FLAGS_DEBUG "${CMAKE_EXE_LINKER_FLAGS_DEBUG}")
