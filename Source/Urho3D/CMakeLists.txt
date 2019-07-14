@@ -308,6 +308,8 @@ if (WEB)
         target_link_libraries(Urho3D PUBLIC "-s WASM=1")
         # https://github.com/urho3d/Urho3D/issues/2447#issuecomment-494262359
         target_link_libraries(Urho3D PUBLIC "-s \"BINARYEN_TRAP_MODE='clamp'\"")
+    else()
+        target_link_libraries(Urho3D PUBLIC "-s WASM=0")
     endif()
     if (URHO3D_THREADING)
         target_compile_options(Urho3D PRIVATE "-s USE_PTHREADS=1")
