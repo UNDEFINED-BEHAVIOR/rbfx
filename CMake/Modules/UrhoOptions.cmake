@@ -103,6 +103,9 @@ option                (URHO3D_PACKAGING          "Package resources"            
 option                (URHO3D_DOCS               "Build documentation."                                  OFF)
 cmake_dependent_option(URHO3D_MERGE_STATIC_LIBS  "Merge third party dependency libs to Urho3D.a"         OFF "NOT BUILD_SHARED_LIBS"                          OFF)
 
+# Web
+# cmake_dependent_option(EMSCRIPTEN_MEMORY_GROW    "Force EMSCRIPTEN_MEMEORY_GROW if WASM is specified"    ON "EMSCRIPTEN_WASM"                                 OFF)
+
 if (WIN32)
     set(URHO3D_RENDERER D3D11 CACHE STRING "Select renderer: D3D9 | D3D11 | OpenGL")
     option(URHO3D_WIN32_CONSOLE "Show log messages in win32 console"                                     OFF                                                     )

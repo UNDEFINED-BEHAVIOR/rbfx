@@ -105,26 +105,65 @@ if (MINGW)
     endforeach ()
 endif ()
 
-# Configure for web
+## Emscripten-specific setup
 if (WEB)
-    # Emscripten-specific setup
-    if (EMSCRIPTEN_EMCC_VERSION VERSION_LESS 1.31.3)
-        message(FATAL_ERROR "Unsupported compiler version")
+    ## version checks
+    set(_MIN_EMSCRIPTEN_VER 1.38.20)
+    if (EMSCRIPTEN_EMCC_VERSION VERSION_LESS ${_MIN_EMSCRIPTEN_VER})
+        message(FATAL_ERROR "Unsupported emscripten sdk version < ${_MIN_EMSCRIPTEN_VER}")
     endif ()
+    
+    ## global compiler flags
+
     set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-warn-absolute-paths -Wno-unknown-warning-option")
     set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-warn-absolute-paths -Wno-unknown-warning-option")
     if (URHO3D_THREADING)
         set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -s USE_PTHREADS=1")
         set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -s USE_PTHREADS=1")
     endif ()
-    set (CMAKE_C_FLAGS_RELEASE "-Oz -DNDEBUG")
-    set (CMAKE_CXX_FLAGS_RELEASE "-Oz -DNDEBUG")
+    
+    if(EMSCRIPTEN_WASM)
+        target_link_libraries(Urho3D PUBLIC "-s WASM=1")
+        # https://github.com/urho3d/Urho3D/issues/2447#issuecomment-494262359
+        target_link_libraries(Urho3D PUBLIC "-s \"BINARYEN_TRAP_MODE='clamp'\"")
+    endif()
+    if (URHO3D_THREADING)
+        target_compile_options(Urho3D PRIVATE "-s USE_PTHREADS=1")
+    endif ()
+
+    ## Specific version patches
+
+    # Since version 1.37.25 emcc reduces default runtime exports, but we need "UTF8ToString" so it needs to be explicitly declared now
+    # (See https://github.com/kripken/emscripten/commit/3bc1f9f08b9f420680124af703c787244468cedc for more detail)
+    if (NOT EMSCRIPTEN_EMCC_VERSION VERSION_LESS 1.37.25)
+        target_link_libraries(Urho3D PUBLIC "-s EXTRA_EXPORTED_RUNTIME_METHODS=\"['UTF8ToString']\"")
+    endif ()
+    # Since version 1.37.28 emcc reduces default runtime exports, but we need "FS" so it needs to be explicitly requested now
+    # (See https://github.com/kripken/emscripten/commit/f2191c1223e8261bf45f4e27d2ba4d2e9d8b3341 for more detail)
+    if (NOT EMSCRIPTEN_EMCC_VERSION VERSION_LESS 1.37.28)
+        target_link_libraries(Urho3D PUBLIC "-s FORCE_FILESYSTEM=1")
+    endif ()
+    
+    ## build mode specific flags
+    
+    set (CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -Oz")
+    set (CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -DNDEBUG")
+
+    set (CMAKE_CXX_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
+
     # Remove variables to make the -O3 regalloc easier, embed data in asm.js to reduce number of moving part
-    set (CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} -O3 -s AGGRESSIVE_VARIABLE_ELIMINATION=1 --memory-init-file 0")
-    set (CMAKE_MODULE_LINKER_FLAGS_RELEASE "${CMAKE_MODULE_LINKER_FLAGS_RELEASE} -O3 -s AGGRESSIVE_VARIABLE_ELIMINATION=1 --memory-init-file 0")
+    set (CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} -O3")
+    set (CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} -s AGGRESSIVE_VARIABLE_ELIMINATION=1")
+    set (CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} --memory-init-file 0")
+
+    set (CMAKE_MODULE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE}")
+
     # Preserve LLVM debug information, show line number debug comments, and generate source maps; always disable exception handling codegen
-    set (CMAKE_EXE_LINKER_FLAGS_DEBUG "${CMAKE_EXE_LINKER_FLAGS_DEBUG} -g4 -s DISABLE_EXCEPTION_CATCHING=1")
-    set (CMAKE_MODULE_LINKER_FLAGS_DEBUG "${CMAKE_MODULE_LINKER_FLAGS_DEBUG} -g4 -s DISABLE_EXCEPTION_CATCHING=1")
+    set (CMAKE_EXE_LINKER_FLAGS_DEBUG "${CMAKE_EXE_LINKER_FLAGS_DEBUG} -g4")
+    set (CMAKE_EXE_LINKER_FLAGS_DEBUG "${CMAKE_EXE_LINKER_FLAGS_DEBUG} -s DISABLE_EXCEPTION_CATCHING=1")
+
+    set (CMAKE_MODULE_LINKER_FLAGS_DEBUG "${CMAKE_EXE_LINKER_FLAGS_DEBUG}")
+
 endif ()
 
 if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
